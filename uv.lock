@@ -124,14 +124,14 @@ requires-dist = [
     { name = "cython", specifier = ">=3.0" },
     { name = "loguru" },
     { name = "orjson", specifier = ">=3.9.0" },
-    { name = "pyooz", git = "https://github.com/CyrixJD115/pyoozle.git" },
+    { name = "pyooz", git = "https://github.com/CyrixJD115/oozle-cypy.git" },
     { name = "setuptools", specifier = ">=68.0" },
 ]
 
 [[package]]
 name = "pyooz"
 version = "0.1.0"
-source = { git = "https://github.com/CyrixJD115/pyoozle.git#3aee9a2696409b38d8cbb775efafaa61095babf9" }
+source = { git = "https://github.com/CyrixJD115/oozle-cypy.git#306f98d70a0026d6718a862868e2631f5f075f2d" }
 
 [[package]]
 name = "setuptools"

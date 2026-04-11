@@ -12,7 +12,7 @@ license = "MIT"
 dependencies = [
     "loguru",
     "orjson>=3.9.0",
-    "pyooz @ git+https://github.com/CyrixJD115/pyoozle.git",
+    "pyooz @ git+https://github.com/CyrixJD115/oozle-cypy.git",
     "cython>=3.0",
     "setuptools>=68.0",
 ]

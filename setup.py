@@ -14,7 +14,11 @@ except ImportError:
 
 if USE_CYTHON:
     ext_modules = cythonize(
-        "palsav/_fast_archive.pyx",
+        Extension(
+            "palsav._fast_archive",
+            ["palsav/_fast_archive.pyx"],
+            define_macros=[("PY_SSIZE_T_CLEAN", "1")],
+        ),
         compiler_directives={
             "language_level": "3",
             "boundscheck": False,
