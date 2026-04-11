@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.c
+!palsav/_fast_archive.pyx
+build/
+dist/
+*.egg-info/
+.venv/

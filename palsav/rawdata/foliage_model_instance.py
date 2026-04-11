@@ -1,0 +1,86 @@
+from typing import Any, Sequence
+from loguru import logger
+from palsav.archive import *
+
+
+def decode(
+    reader: FArchiveReader, type_name: str, size: int, path: str
+) -> dict[str, Any]:
+    if type_name != "ArrayProperty":
+        raise Exception(f"Expected ArrayProperty, got {type_name}")
+    value = reader.property(type_name, size, path, nested_caller_path=path)
+    data_bytes = value["value"]["values"]
+    value["value"] = decode_bytes(reader, data_bytes)
+    return value
+
+
+def decode_bytes(
+    parent_reader: FArchiveReader, b_bytes: Sequence[int]
+) -> dict[str, Any]:
+    reader = parent_reader.internal_copy(b_bytes, debug=False)
+    data: dict[str, Any] = {}
+    data["model_instance_id"] = reader.guid()
+    pitch, yaw, roll = reader.compressed_short_rotator()
+    x, y, z = reader.packed_vector(1)
+    data["world_transform"] = {
+        "rotator": {"pitch": pitch, "yaw": yaw, "roll": roll},
+        "location": {"x": x, "y": y, "z": z},
+        "scale_x": reader.float(),
+    }
+    data["hp"] = reader.i32()
+    if not reader.eof():
+        unknown_bytes = [int(b) for b in reader.read_to_end()]
+        logger.debug(
+            f"Unknown data found in foliage model instance, length {len(unknown_bytes)}. Data: {' '.join((f'{b:02X}' for b in unknown_bytes))}"
+        )
+        data["unknown_bytes"] = unknown_bytes
+    return data
+
+
+def _encode_foliage_model_instance_data(properties: dict[str, Any]) -> dict[str, Any]:
+    """Encode foliage model instance data with defensive copying to prevent reference sharing corruption."""
+    rawdata = properties["value"]
+    if "values" in rawdata:
+        return rawdata
+
+    try:
+        encoded_bytes = encode_bytes(rawdata)
+        new_data = {"values": list(encoded_bytes)}
+        logger.debug(f"Encoded foliage model instance data: {len(encoded_bytes)} bytes")
+        return new_data
+    except Exception as e:
+        logger.error(f"Failed to encode foliage model instance data: {e}")
+        raise
+
+
+def encode(
+    writer: FArchiveWriter, property_type: str, properties: dict[str, Any]
+) -> int:
+    if property_type != "ArrayProperty":
+        raise Exception(f"Expected ArrayProperty, got {property_type}")
+    del properties["custom_type"]
+    new_value = _encode_foliage_model_instance_data(properties)
+    properties["value"] = new_value
+    return writer.property_inner(property_type, properties)
+
+
+def encode_bytes(p: dict[str, Any]) -> bytes:
+    writer = FArchiveWriter()
+    writer.guid(p["model_instance_id"])
+    writer.compressed_short_rotator(
+        p["world_transform"]["rotator"]["pitch"],
+        p["world_transform"]["rotator"]["yaw"],
+        p["world_transform"]["rotator"]["roll"],
+    )
+    writer.packed_vector(
+        1,
+        p["world_transform"]["location"]["x"],
+        p["world_transform"]["location"]["y"],
+        p["world_transform"]["location"]["z"],
+    )
+    writer.float(p["world_transform"]["scale_x"])
+    writer.i32(p["hp"])
+    if "unknown_bytes" in p:
+        writer.write(bytes(p["unknown_bytes"]))
+    encoded_bytes = writer.bytes()
+    return encoded_bytes
