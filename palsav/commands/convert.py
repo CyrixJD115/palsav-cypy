@@ -1,10 +1,11 @@
 import argparse
-import sys
-import time
 import gc
 import json
 import os
+import sys
+import time
 from loguru import logger
+
 from palsav.gvas import GvasFile
 from palsav.json_tools import dump as fast_dump, load as fast_load
 from palsav.palsav import compress_gvas_to_sav, decompress_sav_to_gvas
