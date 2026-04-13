@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "palsav-cypy"
-version = "0.1.0"
+version = "0.1.1"
 description = "High-performance Palworld save file parser and converter (Cython-accelerated)"
 readme = "README.md"
 requires-python = ">=3.12"
