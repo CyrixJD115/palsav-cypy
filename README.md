@@ -86,6 +86,8 @@ with open("Level_resaved.sav", "wb") as f:
 
 Uses `orjson` for fast JSON serialization/deserialization. GC is automatically disabled during parsing and re-enabled after to eliminate collection pauses.
 
+> **Why no Cython?** In real-world testing on an 80MB save, Cython only saved ~10 seconds (126s vs 136s) — not a meaningful difference for most saves which are under 15MB. The real performance gain comes from `orjson`, which dramatically speeds up JSON read/write compared to the standard library. Cython was removed to simplify installation and eliminate the compilation step entirely.
+
 ## Dependencies
 
 | Package | Notes |
