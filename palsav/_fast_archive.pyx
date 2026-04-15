@@ -390,12 +390,16 @@ cdef class FastArchiveReader:
         if value_type == "StructProperty":
             value_struct_type = <str>self._get_type_or(value_path, "StructProperty")
 
-        cdef list values = []
-        for _ in range(count):
-            values.append({
+        cdef list values = PyList_New(count)
+        cdef dict entry
+        cdef Py_ssize_t i
+        for i in range(count):
+            entry = {
                 "key": self._prop_value(key_type, key_struct_type, key_path),
                 "value": self._prop_value(value_type, value_struct_type, value_path),
-            })
+            }
+            Py_INCREF(entry)
+            PyList_SET_ITEM(values, i, entry)
 
         return {
             "key_type": key_type, "value_type": value_type,
@@ -408,7 +412,14 @@ cdef class FastArchiveReader:
         cdef object _id = self._coptional_guid()
         self._cu32()
         cdef uint32_t count = self._cu32()
-        return {"set_type": set_type, "id": _id, "value": [self.properties_until_end() for _ in range(count)]}
+        cdef list items = PyList_New(count)
+        cdef object item
+        cdef Py_ssize_t i
+        for i in range(count):
+            item = self.properties_until_end()
+            Py_INCREF(item)
+            PyList_SET_ITEM(items, i, item)
+        return {"set_type": set_type, "id": _id, "value": items}
 
     # ── Struct / prop_value / array ────────────────────────────────────
 
@@ -472,6 +483,8 @@ cdef class FastArchiveReader:
         cdef str sub_path
         cdef list prop_values
         cdef object _id
+        cdef Py_ssize_t i
+        cdef object item
 
         if array_type == "StructProperty":
             prop_name = self._cfstring()
@@ -480,10 +493,12 @@ cdef class FastArchiveReader:
             type_name = self._cfstring()
             _id = self._cguid()
             self._pos += 1  # skip(1)
-            prop_values = []
+            prop_values = PyList_New(count)
             sub_path = f"{path}.{prop_name}"
-            for _ in range(count):
-                prop_values.append(self._struct_value(type_name, sub_path))
+            for i in range(count):
+                item = self._struct_value(type_name, sub_path)
+                Py_INCREF(item)
+                PyList_SET_ITEM(prop_values, i, item)
             return {"prop_name": prop_name, "prop_type": prop_type, "values": prop_values, "type_name": type_name, "id": _id}
         else:
             return {"values": self._array_value_impl(array_type, count, size, path)}
@@ -492,16 +507,30 @@ cdef class FastArchiveReader:
         return self._array_property_impl(array_type, size, path)
 
     cdef list _array_value_impl(self, str array_type, uint64_t count, uint64_t size, str path):
-        cdef list values = []
+        cdef list values
+        cdef Py_ssize_t i
+        cdef object item
         if array_type == "EnumProperty":
-            for _ in range(count):
-                values.append(self._cfstring())
+            values = PyList_New(count)
+            for i in range(count):
+                item = self._cfstring()
+                Py_INCREF(item)
+                PyList_SET_ITEM(values, i, item)
+            return values
         elif array_type == "NameProperty":
-            for _ in range(count):
-                values.append(self._cfstring())
+            values = PyList_New(count)
+            for i in range(count):
+                item = self._cfstring()
+                Py_INCREF(item)
+                PyList_SET_ITEM(values, i, item)
+            return values
         elif array_type == "Guid":
-            for _ in range(count):
-                values.append(self._cguid())
+            values = PyList_New(count)
+            for i in range(count):
+                item = self._cguid()
+                Py_INCREF(item)
+                PyList_SET_ITEM(values, i, item)
+            return values
         elif array_type == "ByteProperty":
             if size == count:
                 return list(self.byte_list(count))
@@ -509,14 +538,20 @@ cdef class FastArchiveReader:
                 raise Exception("Labelled ByteProperty not implemented")
         else:
             raise Exception(f"Unknown array type: {array_type} ({path})")
-        return values
 
     def array_value(self, str array_type, uint64_t count, uint64_t size, str path):
         return self._array_value_impl(array_type, count, size, path)
 
     def tarray(self, type_reader):
         cdef uint32_t count = self._cu32()
-        return [type_reader(self) for _ in range(count)]
+        cdef list result = PyList_New(count)
+        cdef Py_ssize_t i
+        cdef object item
+        for i in range(count):
+            item = type_reader(self)
+            Py_INCREF(item)
+            PyList_SET_ITEM(result, i, item)
+        return result
 
     # ── Geometry / transform helpers ───────────────────────────────────
 
