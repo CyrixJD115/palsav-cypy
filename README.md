@@ -1,4 +1,4 @@
-# palsav-cypy
+# PalSav-Flex
 
 High-performance Palworld save file parser and converter. Fork of [palworld-save-tools](https://github.com/oMaN-Rod/palworld-save-tools) with Oodle compression support.
 
