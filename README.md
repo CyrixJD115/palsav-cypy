@@ -1,6 +1,6 @@
 # palsav-cypy
 
-High-performance Palworld save file parser and converter. Cython-accelerated fork of [palworld-save-tools](https://github.com/oMaN-Rod/palworld-save-tools) with Oodle compression support.
+High-performance Palworld save file parser and converter. Fork of [palworld-save-tools](https://github.com/oMaN-Rod/palworld-save-tools) with Oodle compression support.
 
 ## Install
 
@@ -8,17 +8,13 @@ High-performance Palworld save file parser and converter. Cython-accelerated for
 
 ```bash
 uv sync
-uv run setup.py build_ext --inplace
 ```
 
 ### With pip
 
 ```bash
 pip install -e .
-python setup.py build_ext --inplace
 ```
-
-> If you skip the Cython build, palsav falls back to pure-Python mode automatically.
 
 ## CLI
 
@@ -88,7 +84,7 @@ with open("Level_resaved.sav", "wb") as f:
 
 ## Performance
 
-The Cython `FastArchiveReader` uses C-level pointer arithmetic for all primitive reads (int, float, guid, string, etc.) with `nogil` and `noexcept` where possible. Pure Python mode is slow; Cython mode is significantly faster. GC is automatically disabled during parsing and re-enabled after to eliminate collection pauses.
+Uses `orjson` for fast JSON serialization/deserialization. GC is automatically disabled during parsing and re-enabled after to eliminate collection pauses.
 
 ## Dependencies
 
@@ -97,7 +93,6 @@ The Cython `FastArchiveReader` uses C-level pointer arithmetic for all primitive
 | `loguru` | Logging |
 | `orjson` | Fast JSON serialization |
 | `pyoozle` | Oodle compression/decompression |
-| `cython` | Compiles `_fast_archive.pyx` |
 | `setuptools` | Build backend |
 
 ## License

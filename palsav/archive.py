@@ -1151,16 +1151,3 @@ class FArchiveWriter:
         self.quat_dict(value["rotation"])
         self.vector_dict(value["translation"])
         self.vector_dict(value["scale3d"])
-
-
-try:
-    from palsav._fast_archive import FastArchiveReader
-
-    FArchiveReader = FastArchiveReader
-    if os.getenv("DEBUG"):
-        logger.debug("Using Cython FastArchiveReader")
-except ImportError:
-    if os.getenv("DEBUG"):
-        logger.debug(
-            "Cython FastArchiveReader not available, using pure Python FArchiveReader"
-        )

@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68.0", "cython>=3.0"]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "palsav-cypy"
-version = "0.1.2"
-description = "High-performance Palworld save file parser and converter (Cython-accelerated)"
+version = "0.2.0"
+description = "High-performance Palworld save file parser and converter with Oodle compression support"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = "MIT"
@@ -13,7 +13,6 @@ dependencies = [
     "loguru",
     "orjson>=3.9.0",
     "pyooz @ git+https://github.com/CyrixJD115/oozle-cypy.git",
-    "cython>=3.0",
     "setuptools>=68.0",
 ]
 
