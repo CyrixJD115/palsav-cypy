@@ -1,4 +1,5 @@
 from typing import Any, Callable
+
 from palsav.archive import FArchiveReader, FArchiveWriter
 from palsav.rawdata import (
     base_camp,
@@ -60,6 +61,7 @@ PALWORLD_TYPE_HINTS: dict[str, str] = {
     ".SaveData.Local_MaxFriendshipPalIds.Key": "Guid",
     ".SaveData.Local_MaxFriendshipPalIds.Value": "StructProperty",
 }
+
 PALWORLD_CUSTOM_PROPERTIES: dict[
     str,
     tuple[
@@ -80,6 +82,9 @@ PALWORLD_CUSTOM_PROPERTIES: dict[
         item_container_slots.decode,
         item_container_slots.encode,
     ),
+    # This isn't actually serialised into at all?
+    # ".worldSaveData.CharacterContainerSaveData.Value.RawData": (debug.decode, debug.encode),
+    # This duplicates the data already serialised into the Slots UObject?
     ".worldSaveData.CharacterContainerSaveData.Value.Slots.Slots.RawData": (
         character_container.decode,
         character_container.encode,
@@ -113,7 +118,10 @@ PALWORLD_CUSTOM_PROPERTIES: dict[
         base_camp_module.encode,
     ),
     ".worldSaveData.WorkSaveData": (work.decode, work.encode),
-    ".worldSaveData.MapObjectSaveData": (map_object.decode, map_object.encode),
+    ".worldSaveData.MapObjectSaveData": (
+        map_object.decode,
+        map_object.encode,
+    ),
     ".worldSaveData.GuildExtraSaveDataMap.Value.GuildItemStorage.RawData": (
         guild_item_storage.decode,
         guild_item_storage.encode,
@@ -123,4 +131,8 @@ PALWORLD_CUSTOM_PROPERTIES: dict[
         guild_lab.encode,
     ),
 }
-DISABLED_PROPERTIES = {".worldSaveData.BaseCampSaveData.Value.ModuleMap"}
+
+# List of properties that are not working with newer versions
+DISABLED_PROPERTIES = {
+    ".worldSaveData.BaseCampSaveData.Value.ModuleMap",
+}

@@ -1,6 +1,5 @@
 from typing import Any, Optional, Sequence
-from loguru import logger
-from palsav.archive import FArchiveReader, FArchiveWriter
+from palsav.archive import FArchiveReader, FArchiveWriter, coerce_bytes
 
 
 def decode(
@@ -17,29 +16,11 @@ def decode(
 def decode_bytes(
     parent_reader: FArchiveReader, m_bytes: Sequence[int]
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(m_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(m_bytes), debug=False)
     data = {"container_id": reader.guid()}
     if not reader.eof():
-        data["trailing_bytes"] = [int(b) for b in reader.read_to_end()]
+        data["trailing_bytes"] = reader.read_to_end()
     return data
-
-
-def _encode_guild_item_storage_data(properties: dict[str, Any]) -> dict[str, Any]:
-    """Encode guild item storage data with defensive copying to prevent reference sharing corruption."""
-    rawdata = properties["value"]
-    if rawdata is None:
-        return {"values": []}
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_data = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded guild item storage data: {len(encoded_bytes)} bytes")
-        return new_data
-    except Exception as e:
-        logger.error(f"Failed to encode guild item storage data: {e}")
-        raise
 
 
 def encode(
@@ -48,17 +29,18 @@ def encode(
     if property_type != "ArrayProperty":
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
-    new_value = _encode_guild_item_storage_data(properties)
-    properties["value"] = new_value
+    encoded_bytes = encode_bytes(properties["value"])
+    properties["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
 def encode_bytes(p: Optional[dict[str, Any]]) -> bytes:
     if p is None:
         return b""
+
     writer = FArchiveWriter()
     writer.guid(p["container_id"])
     if "trailing_bytes" in p:
-        writer.write(bytes(p["trailing_bytes"]))
+        writer.write(coerce_bytes(p["trailing_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

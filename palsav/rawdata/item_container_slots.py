@@ -1,5 +1,5 @@
-from typing import Any, Sequence, Optional
-from loguru import logger
+from typing import Any, Sequence
+
 from palsav.archive import *
 
 
@@ -19,7 +19,7 @@ def decode_bytes(
 ) -> Optional[dict[str, Any]]:
     if len(c_bytes) == 0:
         return None
-    reader = parent_reader.internal_copy(c_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(c_bytes), debug=False)
     data = {
         "slot_index": reader.i32(),
         "count": reader.i32(),
@@ -30,27 +30,9 @@ def decode_bytes(
                 "local_id_in_created_world": reader.guid(),
             },
         },
-        "trailing_bytes": [int(b) for b in reader.read_to_end()],
+        "trailing_bytes": reader.read_to_end(),
     }
     return data
-
-
-def _encode_item_container_slots_data(properties: dict[str, Any]) -> dict[str, Any]:
-    """Encode item container slots data with defensive copying to prevent reference sharing corruption."""
-    rawdata = properties["value"]
-    if rawdata is None:
-        return {"values": []}
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_data = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded item container slots data: {len(encoded_bytes)} bytes")
-        return new_data
-    except Exception as e:
-        logger.error(f"Failed to encode item container slots data: {e}")
-        raise
 
 
 def encode(
@@ -59,8 +41,8 @@ def encode(
     if property_type != "ArrayProperty":
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
-    new_value = _encode_item_container_slots_data(properties)
-    properties["value"] = new_value
+    encoded_bytes = encode_bytes(properties["value"])
+    properties["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
@@ -73,6 +55,6 @@ def encode_bytes(p: dict[str, Any]) -> bytes:
     writer.fstring(p["item"]["static_id"])
     writer.guid(p["item"]["dynamic_id"]["created_world_id"])
     writer.guid(p["item"]["dynamic_id"]["local_id_in_created_world"])
-    writer.write(bytes(p["trailing_bytes"]))
+    writer.write(coerce_bytes(p["trailing_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

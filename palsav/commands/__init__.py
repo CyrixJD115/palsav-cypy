@@ -1,1 +1,4 @@
-from . import convert
+from . import (
+    convert,
+    resave_test
+)

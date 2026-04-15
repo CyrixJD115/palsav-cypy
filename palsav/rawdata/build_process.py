@@ -1,5 +1,5 @@
 from typing import Any, Sequence
-from loguru import logger
+
 from palsav.archive import *
 
 
@@ -17,28 +17,15 @@ def decode(
 def decode_bytes(
     parent_reader: FArchiveReader, b_bytes: Sequence[int]
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(b_bytes, debug=False)
-    data = {"state": reader.byte(), "id": reader.guid()}
+    reader = parent_reader.internal_copy(coerce_bytes(b_bytes), debug=False)
+    data = {
+        "state": reader.byte(),
+        "id": reader.guid(),
+    }
     data["trailing_bytes"] = reader.byte_list(4)
     if not reader.eof():
         raise Exception("Warning: EOF not reached")
     return data
-
-
-def _encode_build_process_data(properties: dict[str, Any]) -> dict[str, Any]:
-    """Encode build process data with defensive copying to prevent reference sharing corruption."""
-    rawdata = properties["value"]
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_data = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded build process data: {len(encoded_bytes)} bytes")
-        return new_data
-    except Exception as e:
-        logger.error(f"Failed to encode build process data: {e}")
-        raise
 
 
 def encode(
@@ -47,8 +34,8 @@ def encode(
     if property_type != "ArrayProperty":
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
-    new_value = _encode_build_process_data(properties)
-    properties["value"] = new_value
+    encoded_bytes = encode_bytes(properties["value"])
+    properties["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
@@ -56,6 +43,6 @@ def encode_bytes(p: dict[str, Any]) -> bytes:
     writer = FArchiveWriter()
     writer.byte(p["state"])
     writer.guid(p["id"])
-    writer.write(bytes(p["trailing_bytes"]))
+    writer.write(coerce_bytes(p["trailing_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

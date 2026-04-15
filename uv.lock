@@ -63,8 +63,8 @@ wheels = [
 ]
 
 [[package]]
-name = "palsav-cypy"
-version = "0.1.2"
+name = "palsav-flex"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "loguru" },

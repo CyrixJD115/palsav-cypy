@@ -1,4 +1,5 @@
 from typing import Any, Sequence
+
 from loguru import logger
 from palsav.archive import *
 
@@ -19,37 +20,19 @@ def decode_bytes(
 ) -> Optional[dict[str, Any]]:
     if len(c_bytes) == 0:
         return None
-    reader = parent_reader.internal_copy(c_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(c_bytes), debug=False)
     data = {
         "player_uid": reader.guid(),
         "instance_id": reader.guid(),
         "permission_tribe_id": reader.byte(),
     }
     if not reader.eof():
-        unknown_bytes = [int(b) for b in reader.read_to_end()]
+        unknown_bytes = reader.read_to_end()
         logger.debug(
-            f"Unknown data in character container: {' '.join((f'{b:02x}' for b in unknown_bytes))}"
+            f"Unknown data in character container: {' '.join(f'{b:02x}' for b in unknown_bytes)}"
         )
         data["unknown_bytes"] = unknown_bytes
     return data
-
-
-def _encode_character_container_data(properties: dict[str, Any]) -> dict[str, Any]:
-    """Encode character container data with defensive copying to prevent reference sharing corruption."""
-    rawdata = properties["value"]
-    if rawdata is None:
-        return {"values": []}
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_data = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded character container data: {len(encoded_bytes)} bytes")
-        return new_data
-    except Exception as e:
-        logger.error(f"Failed to encode character container data: {e}")
-        raise
 
 
 def encode(
@@ -58,8 +41,8 @@ def encode(
     if property_type != "ArrayProperty":
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
-    new_value = _encode_character_container_data(properties)
-    properties["value"] = new_value
+    encoded_bytes = encode_bytes(properties["value"])
+    properties["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
@@ -71,6 +54,6 @@ def encode_bytes(p: dict[str, Any]) -> bytes:
     writer.guid(p["instance_id"])
     writer.byte(p["permission_tribe_id"])
     if "unknown_bytes" in p:
-        writer.write(bytes(p["unknown_bytes"]))
+        writer.write(coerce_bytes(p["unknown_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

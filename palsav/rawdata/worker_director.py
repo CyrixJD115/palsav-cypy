@@ -1,5 +1,5 @@
 from typing import Any, Sequence
-from loguru import logger
+
 from palsav.archive import *
 
 
@@ -17,7 +17,7 @@ def decode(
 def decode_bytes(
     parent_reader: FArchiveReader, b_bytes: Sequence[int]
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(b_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(b_bytes), debug=False)
     data: dict[str, Any] = {}
     data["id"] = reader.guid()
     data["spawn_transform"] = reader.ftransform()
@@ -30,30 +30,14 @@ def decode_bytes(
     return data
 
 
-def _encode_worker_director_data(properties: dict[str, Any]) -> dict[str, Any]:
-    """Encode worker director data with defensive copying to prevent reference sharing corruption."""
-    rawdata = properties["value"]
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_data = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded worker director data: {len(encoded_bytes)} bytes")
-        return new_data
-    except Exception as e:
-        logger.error(f"Failed to encode worker director data: {e}")
-        raise
-
-
 def encode(
     writer: FArchiveWriter, property_type: str, properties: dict[str, Any]
 ) -> int:
     if property_type != "ArrayProperty":
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
-    new_value = _encode_worker_director_data(properties)
-    properties["value"] = new_value
+    encoded_bytes = encode_bytes(properties["value"])
+    properties["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
@@ -64,6 +48,6 @@ def encode_bytes(p: dict[str, Any]) -> bytes:
     writer.byte(p["current_order_type"])
     writer.byte(p["current_battle_type"])
     writer.guid(p["container_id"])
-    writer.write(bytes(p["trailing_bytes"]))
+    writer.write(coerce_bytes(p["trailing_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

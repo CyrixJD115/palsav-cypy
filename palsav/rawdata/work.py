@@ -1,12 +1,17 @@
 from typing import Any, Sequence
+
 from loguru import logger
 from palsav.archive import *
 
 WORK_BASE_TYPES = set(
     [
+        # "EPalWorkableType::Illegal",
         "EPalWorkableType::Progress",
+        # "EPalWorkableType::CollectItem",
+        # "EPalWorkableType::TransportItem",
         "EPalWorkableType::TransportItemInBaseCamp",
         "EPalWorkableType::ReviveCharacter",
+        # "EPalWorkableType::CollectResource",
         "EPalWorkableType::Booth",
         "EPalWorkableType::LevelObject",
         "EPalWorkableType::Repair",
@@ -41,8 +46,9 @@ def decode(
 def decode_bytes(
     parent_reader: FArchiveReader, b_bytes: Sequence[int], work_type: str
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(b_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(b_bytes), debug=False)
     data: dict[str, Any] = {}
+    # Handle base serialization
     if work_type in WORK_BASE_TYPES:
         data["id"] = reader.guid()
         data["workable_bounds"] = {
@@ -59,7 +65,10 @@ def decode_bytes(
         data["owner_map_object_concrete_model_id"] = reader.guid()
         data["current_state"] = reader.byte()
         data["assign_locations"] = reader.tarray(
-            lambda r: {"location": r.vector_dict(), "facing_direction": r.vector_dict()}
+            lambda r: {
+                "location": r.vector_dict(),
+                "facing_direction": r.vector_dict(),
+            }
         )
         data["behaviour_type"] = reader.byte()
         data["assign_define_data_id"] = reader.fstring()
@@ -96,6 +105,7 @@ def decode_bytes(
                 data["required_work_amount"] = reader.float()
             case _:
                 pass
+    # These two do not serialize base data
     elif work_type in ["EPalWorkableType::Assign", "EPalWorkableType::LevelObject"]:
         data["handle_id"] = reader.guid()
         data["location_index"] = reader.i32()
@@ -108,27 +118,33 @@ def decode_bytes(
         data["fixed"] = reader.u32()
         if work_type == "EPalWorkableType::LevelObject":
             data["target_map_object_model_id"] = reader.guid()
+
     if len(data.keys()) == 0:
         logger.debug(f"Unable to parse {work_type}, falling back to raw bytes")
         return {"values": b_bytes}
+    # UPalWorkProgressTransformBase->SerializeProperties
     transform_type = reader.byte()
     data["transform"] = {"type": transform_type}
+
     match transform_type:
         case 2:
             data["transform"]["map_object_instance_id"] = reader.guid()
             data["transform"]["trailing_bytes"] = reader.byte_list(8)
+
     if not reader.eof():
         raise Exception(
             f"Warning: EOF not reached for {work_type}, remaining bytes: {reader.read_to_end()!r}"
         )
+
     return data
 
 
 def decode_work_assign_bytes(
     parent_reader: FArchiveReader, b_bytes: Sequence[int]
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(b_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(b_bytes), debug=False)
     data: dict[str, Any] = {}
+
     data["id"] = reader.guid()
     data["location_index"] = reader.i32()
     data["assign_type"] = reader.byte()
@@ -141,46 +157,8 @@ def decode_work_assign_bytes(
     data["trailing_bytes"] = reader.byte_list(4)
     if not reader.eof():
         raise Exception("Warning: EOF not reached")
+
     return data
-
-
-def _encode_work_rawdata(work_element: dict[str, Any]) -> dict[str, Any]:
-    """Encode work element RawData with defensive copying to prevent reference sharing corruption.
-
-    Returns a NEW dict with 'values' key to avoid modifying potentially shared references.
-    """
-    rawdata = work_element["RawData"]["value"]
-    if "values" in rawdata:
-        return rawdata
-
-    work_type = work_element["WorkableType"]["value"]["value"]
-    try:
-        encoded_bytes = encode_bytes(rawdata, work_type)
-        new_rawdata = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded work RawData ({work_type}): {len(encoded_bytes)} bytes")
-        return new_rawdata
-    except Exception as e:
-        logger.error(f"Failed to encode work RawData: {e}")
-        raise
-
-
-def _encode_work_assign_rawdata(work_assign: dict[str, Any]) -> dict[str, Any]:
-    """Encode work assign RawData with defensive copying to prevent reference sharing corruption.
-
-    Returns a NEW dict with 'values' key to avoid modifying potentially shared references.
-    """
-    rawdata = work_assign["value"]["RawData"]["value"]
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_work_assign_bytes(rawdata)
-        new_rawdata = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded work assign RawData: {len(encoded_bytes)} bytes")
-        return new_rawdata
-    except Exception as e:
-        logger.error(f"Failed to encode work assign RawData: {e}")
-        raise
 
 
 def encode(
@@ -190,20 +168,27 @@ def encode(
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
     for work_element in properties["value"]["values"]:
-        new_rawdata = _encode_work_rawdata(work_element)
-        work_element["RawData"]["value"] = new_rawdata
-
+        work_type = work_element["WorkableType"]["value"]["value"]
+        work_element["RawData"]["value"] = {
+            "values": encode_bytes(work_element["RawData"]["value"], work_type)
+        }
         for work_assign in work_element["WorkAssignMap"]["value"]:
-            new_assign_rawdata = _encode_work_assign_rawdata(work_assign)
-            work_assign["value"]["RawData"]["value"] = new_assign_rawdata
+            work_assign["value"]["RawData"]["value"] = {
+                "values": encode_work_assign_bytes(
+                    work_assign["value"]["RawData"]["value"]
+                )
+            }
     return writer.property_inner(property_type, properties)
 
 
 def encode_bytes(p: dict[str, Any], work_type: str) -> bytes:
     writer = FArchiveWriter()
+
     if "values" in p:
-        writer.write(bytes(p["values"]))
+        writer.write(coerce_bytes(p["values"]))
         return writer.bytes()
+
+    # Handle base serialization
     if work_type in WORK_BASE_TYPES:
         writer.guid(p["id"])
         writer.vector_dict(p["workable_bounds"]["location"])
@@ -232,9 +217,9 @@ def encode_bytes(p: dict[str, Any], work_type: str) -> bytes:
         writer.u32(1 if p["can_steal_assign"] else 0)
         match work_type:
             case "EPalWorkableType::Defense":
-                writer.write(bytes(p["leading_bytes"]))
+                writer.write(coerce_bytes(p["leading_bytes"]))
                 writer.byte(p["defense_combat_type"])
-                writer.write(bytes(p["trailing_bytes"]))
+                writer.write(coerce_bytes(p["trailing_bytes"]))
             case "EPalWorkableType::Progress":
                 writer.float(p["required_work_amount"])
                 writer.float(p["current_work_amount"])
@@ -256,6 +241,7 @@ def encode_bytes(p: dict[str, Any], work_type: str) -> bytes:
                 writer.float(p["required_work_amount"])
             case _:
                 pass
+    # These two do not serialize base data
     elif work_type in ["EPalWorkableType::Assign", "EPalWorkableType::LevelObject"]:
         writer.guid(p["handle_id"])
         writer.i32(p["location_index"])
@@ -266,18 +252,22 @@ def encode_bytes(p: dict[str, Any], work_type: str) -> bytes:
         writer.u32(p["fixed"])
         if work_type == "EPalWorkableType::LevelObject":
             writer.guid(p["target_map_object_model_id"])
+
+    # UPalWorkProgressTransformBase->SerializeProperties
     transform_type = p["transform"]["type"]
     writer.byte(transform_type)
     match transform_type:
         case 2:
             writer.guid(p["transform"]["map_object_instance_id"])
-            writer.write(bytes(p["transform"]["trailing_bytes"]))
+            writer.write(coerce_bytes(p["transform"]["trailing_bytes"]))
+
     encoded_bytes = writer.bytes()
     return encoded_bytes
 
 
 def encode_work_assign_bytes(p: dict[str, Any]) -> bytes:
     writer = FArchiveWriter()
+
     writer.guid(p["id"])
     writer.i32(p["location_index"])
     writer.byte(p["assign_type"])
@@ -285,6 +275,6 @@ def encode_work_assign_bytes(p: dict[str, Any]) -> bytes:
     writer.guid(p["assigned_individual_id"]["instance_id"])
     writer.byte(p["state"])
     writer.u32(1 if p["fixed"] else 0)
-    writer.write(bytes(p["trailing_bytes"]))
+    writer.write(coerce_bytes(p["trailing_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

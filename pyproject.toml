@@ -7,14 +7,17 @@ name = "palsav-flex"
 version = "0.2.0"
 description = "High-performance Palworld save file parser and converter with Oodle compression support"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
-    "loguru",
-    "orjson>=3.9.0",
+    "loguru>=0.7.3",
+    "orjson>=3.11.8",
     "pyooz @ git+https://github.com/CyrixJD115/oozle-cypy.git",
     "setuptools>=68.0",
 ]
+
+[project.optional-dependencies]
+performance = ["recordclass"]
 
 [project.scripts]
 palsav = "palsav.cli:main"

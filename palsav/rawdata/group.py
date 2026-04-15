@@ -1,5 +1,5 @@
 from typing import Sequence
-from loguru import logger
+
 from palsav.archive import *
 
 
@@ -25,6 +25,7 @@ def decode(
     if type_name != "MapProperty":
         raise Exception(f"Expected MapProperty, got {type_name}")
     value = reader.property(type_name, size, path, nested_caller_path=path)
+    # Decode the raw bytes and replace the raw data
     group_map = value["value"]
     for group in group_map:
         group_type = group["value"]["GroupType"]["value"]["value"]
@@ -38,7 +39,7 @@ def decode(
 def decode_bytes(
     parent_reader: FArchiveReader, group_bytes: Sequence[int], group_type: str
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(group_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(group_bytes), debug=False)
     group_data = {
         "group_type": group_type,
         "group_id": reader.guid(),
@@ -53,6 +54,7 @@ def decode_bytes(
         group_data |= {"org_type": reader.byte()}
     if group_type == "EPalGroupType::Organization":
         group_data |= {"trailing_bytes": reader.byte_list(12)}
+
     if group_type == "EPalGroupType::Guild":
         guild: dict[str, Any] = {
             "leading_bytes": reader.byte_list(4),
@@ -89,35 +91,19 @@ def decode_bytes(
     return group_data
 
 
-def _encode_group_rawdata(group: dict[str, Any]) -> dict[str, Any]:
-    """Encode group RawData with defensive copying to prevent reference sharing corruption.
-
-    Returns a NEW dict with 'values' key to avoid modifying potentially shared references.
-    """
-    rawdata = group["value"]["RawData"]["value"]
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_rawdata = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded group RawData: {len(encoded_bytes)} bytes")
-        return new_rawdata
-    except Exception as e:
-        logger.error(f"Failed to encode group RawData: {e}")
-        raise
-
-
 def encode(
     writer: FArchiveWriter, property_type: str, properties: dict[str, Any]
 ) -> int:
     if property_type != "MapProperty":
-        raise Exception(f"Expected MapProperty, got {type_name}")
+        raise Exception(f"Expected MapProperty, got {property_type}")
     del properties["custom_type"]
     group_map = properties["value"]
     for group in group_map:
-        new_rawdata = _encode_group_rawdata(group)
-        group["value"]["RawData"]["value"] = new_rawdata
+        if "values" in group["value"]["RawData"]["value"]:
+            continue
+        p = group["value"]["RawData"]["value"]
+        encoded_bytes = encode_bytes(p)
+        group["value"]["RawData"]["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
@@ -133,23 +119,23 @@ def encode_bytes(p: dict[str, Any]) -> bytes:
     ]:
         writer.byte(p["org_type"])
     if p["group_type"] == "EPalGroupType::Organization":
-        writer.write(bytes(p["trailing_bytes"]))
+        writer.write(coerce_bytes(p["trailing_bytes"]))
     if p["group_type"] == "EPalGroupType::IndependentGuild":
         writer.guid(p["player_uid"])
         writer.fstring(p["guild_name_2"])
         writer.i64(p["player_info"]["last_online_real_time"])
         writer.fstring(p["player_info"]["player_name"])
     if p["group_type"] == "EPalGroupType::Guild":
-        writer.write(bytes(p["leading_bytes"]))
+        writer.write(coerce_bytes(p["leading_bytes"]))
         writer.tarray(uuid_writer, p["base_ids"])
         writer.i32(p["unknown_1"])
         writer.i32(p["base_camp_level"])
         writer.tarray(uuid_writer, p["map_object_instance_ids_base_camp_points"])
         writer.fstring(p["guild_name"])
         writer.guid(p["last_guild_name_modifier_player_uid"])
-        writer.write(bytes(p["unknown_2"]))
+        writer.write(coerce_bytes(p["unknown_2"]))
         writer.guid(p["admin_player_uid"])
         writer.tarray(player_info_writer, p["players"])
-        writer.write(bytes(p["trailing_bytes"]))
+        writer.write(coerce_bytes(p["trailing_bytes"]))
     encoded_bytes = writer.bytes()
     return encoded_bytes

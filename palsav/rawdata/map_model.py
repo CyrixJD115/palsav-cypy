@@ -1,6 +1,7 @@
 from typing import Any, Sequence
+
 from loguru import logger
-from palsav.archive import FArchiveReader, FArchiveWriter
+from palsav.archive import FArchiveReader, FArchiveWriter, coerce_bytes
 
 
 def decode(
@@ -17,13 +18,16 @@ def decode(
 def decode_bytes(
     parent_reader: FArchiveReader, m_bytes: Sequence[int]
 ) -> dict[str, Any]:
-    reader = parent_reader.internal_copy(m_bytes, debug=False)
+    reader = parent_reader.internal_copy(coerce_bytes(m_bytes), debug=False)
     data: dict[str, Any] = {}
     data["instance_id"] = reader.guid()
     data["concrete_model_instance_id"] = reader.guid()
     data["base_camp_id_belong_to"] = reader.guid()
     data["group_id_belong_to"] = reader.guid()
-    data["hp"] = {"current": reader.i32(), "max": reader.i32()}
+    data["hp"] = {
+        "current": reader.i32(),
+        "max": reader.i32(),
+    }
     data["initital_transform_cache"] = reader.ftransform()
     data["repair_work_id"] = reader.guid()
     data["owner_spawner_level_object_instance_id"] = reader.guid()
@@ -35,29 +39,14 @@ def decode_bytes(
         "id": reader.guid(),
         "valid": reader.u32() > 0,
     }
+
     if not reader.eof():
-        unknown_bytes = [int(b) for b in reader.read_to_end()]
+        unknown_bytes = reader.read_to_end()
         logger.debug(
-            f"Unknown data found in map model instance, length {len(unknown_bytes)}. Data: {' '.join((f'{b:02X}' for b in unknown_bytes))}"
+            f"Unknown data found in map model instance, length {len(unknown_bytes)}. Data: {' '.join(f'{b:02X}' for b in unknown_bytes)}"
         )
         data["unknown_bytes"] = unknown_bytes
     return data
-
-
-def _encode_map_model_data(properties: dict[str, Any]) -> dict[str, Any]:
-    """Encode map model data with defensive copying to prevent reference sharing corruption."""
-    rawdata = properties["value"]
-    if "values" in rawdata:
-        return rawdata
-
-    try:
-        encoded_bytes = encode_bytes(rawdata)
-        new_data = {"values": list(encoded_bytes)}
-        logger.debug(f"Encoded map model data: {len(encoded_bytes)} bytes")
-        return new_data
-    except Exception as e:
-        logger.error(f"Failed to encode map model data: {e}")
-        raise
 
 
 def encode(
@@ -66,29 +55,36 @@ def encode(
     if property_type != "ArrayProperty":
         raise Exception(f"Expected ArrayProperty, got {property_type}")
     del properties["custom_type"]
-    new_value = _encode_map_model_data(properties)
-    properties["value"] = new_value
+    encoded_bytes = encode_bytes(properties["value"])
+    properties["value"] = {"values": encoded_bytes}
     return writer.property_inner(property_type, properties)
 
 
 def encode_bytes(p: dict[str, Any]) -> bytes:
     writer = FArchiveWriter()
+
     writer.guid(p["instance_id"])
     writer.guid(p["concrete_model_instance_id"])
     writer.guid(p["base_camp_id_belong_to"])
     writer.guid(p["group_id_belong_to"])
+
     writer.i32(p["hp"]["current"])
     writer.i32(p["hp"]["max"])
+
     writer.ftransform(p["initital_transform_cache"])
+
     writer.guid(p["repair_work_id"])
     writer.guid(p["owner_spawner_level_object_instance_id"])
     writer.guid(p["owner_instance_id"])
     writer.guid(p["build_player_uid"])
+
     writer.byte(p["interact_restrict_type"])
     writer.float(p["deterioration_damage"])
     writer.guid(p["stage_instance_id_belong_to"]["id"])
     writer.u32(1 if p["stage_instance_id_belong_to"]["valid"] else 0)
+
     if "unknown_bytes" in p:
-        writer.write(bytes(p["unknown_bytes"]))
+        writer.write(coerce_bytes(p["unknown_bytes"]))
+
     encoded_bytes = writer.bytes()
     return encoded_bytes
