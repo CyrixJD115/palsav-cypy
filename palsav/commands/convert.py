@@ -27,8 +27,6 @@ def _gc_paused():
         if was_enabled:
             gc.enable()
             gc.collect()
-
-
 from palsav.gvas import GvasFile
 from palsav import json_tools
 from palsav.palsav import compress_gvas_to_sav, decompress_sav_to_gvas
@@ -87,6 +85,11 @@ def main():
 
     parser.add_argument("--minify-json", action="store_true", help="Minify JSON output")
     parser.add_argument("--raw", action="store_true", help="Output raw GVAS file")
+    parser.add_argument(
+        "--resave",
+        action="store_true",
+        help="Load SAV and resave as SAV (no JSON). Useful for benchmarking the load/write cycle.",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument(
         "--debug-log", action="store_true", help="Enable debug logging to file"
@@ -120,6 +123,14 @@ def main():
         logger.error("Cannot specify both --to-json and --from-json")
         exit(1)
 
+    if args.resave and args.to_json:
+        logger.error("Cannot specify both --resave and --to-json")
+        exit(1)
+
+    if args.resave and args.from_json:
+        logger.error("Cannot specify both --resave and --from-json")
+        exit(1)
+
     if not os.path.exists(args.filename):
         logger.error(f"{args.filename} does not exist")
         exit(1)
@@ -127,7 +138,18 @@ def main():
         logger.error(f"{args.filename} is not a file")
         exit(1)
 
-    if args.to_json or args.filename.endswith(".sav"):
+    if args.resave:
+        if not args.output:
+            output_path = args.filename + ".resave.sav"
+        else:
+            output_path = args.output
+        resave_sav(
+            args.filename,
+            output_path,
+            force=args.force,
+            custom_properties_keys=args.custom_properties,
+        )
+    elif args.to_json or args.filename.endswith(".sav"):
         if not args.output:
             output_path = args.filename + ".json"
         else:
@@ -232,6 +254,58 @@ def convert_json_to_sav(filename, output_path, force=False, zlib=False):
     logger.info(f"Writing SAV file to {output_path}")
     with open(output_path, "wb") as f:
         f.write(sav_file)
+
+
+def resave_sav(filename, output_path, force=False, custom_properties_keys=["all"]):
+    start_time = time.perf_counter()
+    logger.info(f"Resaving {filename} to {output_path}")
+    if os.path.exists(output_path) and not force:
+        if not confirm_prompt("Are you sure you want to continue?"):
+            exit(1)
+
+    logger.info("Decompressing sav file")
+    with open(filename, "rb") as f:
+        data = f.read()
+        raw_gvas, _ = decompress_sav_to_gvas(data)
+    del data
+
+    logger.info("Loading GVAS file")
+    custom_properties = {}
+    if len(custom_properties_keys) > 0 and custom_properties_keys[0] == "all":
+        custom_properties = PALWORLD_CUSTOM_PROPERTIES
+    else:
+        for prop in PALWORLD_CUSTOM_PROPERTIES:
+            if prop in custom_properties_keys:
+                custom_properties[prop] = PALWORLD_CUSTOM_PROPERTIES[prop]
+
+    with _gc_paused():
+        gvas_file = GvasFile.read(
+            raw_gvas, PALWORLD_TYPE_HINTS, custom_properties, allow_nan=True
+        )
+    del raw_gvas
+    gvas_parse_time = time.perf_counter()
+    logger.info(f"GVAS loaded in {gvas_parse_time - start_time:.2f} seconds")
+
+    logger.info("Writing GVAS file")
+    if (
+        "Pal.PalWorldSaveGame" in gvas_file.header.save_game_class_name
+        or "Pal.PalLocalWorldSaveGame" in gvas_file.header.save_game_class_name
+    ):
+        save_type = 0x32
+    else:
+        save_type = 0x31
+    with _gc_paused():
+        written = gvas_file.write(custom_properties)
+    gvas_write_time = time.perf_counter()
+    logger.info(f"GVAS written in {gvas_write_time - gvas_parse_time:.2f} seconds")
+
+    logger.info("Compressing SAV file")
+    sav_file = compress_gvas_to_sav(written, save_type)
+    with open(output_path, "wb") as f:
+        f.write(sav_file)
+    end_time = time.perf_counter()
+    logger.info(f"Compression + disk write: {end_time - gvas_write_time:.2f} seconds")
+    logger.info(f"Total resave took {end_time - start_time:.2f} seconds")
 
 
 def confirm_prompt(question: str) -> bool:
